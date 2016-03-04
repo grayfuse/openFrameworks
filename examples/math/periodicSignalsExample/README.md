@@ -9,17 +9,17 @@ This openFrameworks Example is designed to demonstrate how to draw a variety of 
 In this example, pay attention to the following code: 
 
 * [Trig function](https://en.wikipedia.org/wiki/Trigonometric_functions) ```sin(angle)``` that uses angles and returns values between -1 and 1 (see the trigonometryExample for more on trig functions)
-*  ```ofNoise()```, calculates a randomn value between 0 and 1.0 based on [perlin noise](https://en.wikipedia.org/wiki/Perlin_noise) 
+*  ```ofNoise()```, calculates a random value between 0 and 1.0 based on [perlin noise](https://en.wikipedia.org/wiki/Perlin_noise) 
 *  ```ofSignedNoise()```, calculates a random value between -1.0 and 1.0 based on [perlin noise](https://en.wikipedia.org/wiki/Perlin_noise) 
-*  ```ofRandom(value1, value2)```, calculates a random value between value1 and value2. ofRandom() is different from noise function in that the values returned are completely randomn. noise functions are psuedo random with easing between values. 
-*  ```fmod()```, returns the remainder after dividng one number by another known as the [modulo operator](https://en.wikipedia.org/wiki/Modulo_operation). This is the same as using %; however, it is for floats. 
+*  ```ofRandom(value1, value2)```, calculates a random value between value1 and value2. ofRandom() is different from noise function in that the values returned are completely random. noise functions are pseudo random with easing between values. 
+*  ```fmod()```, returns the remainder after dividing one number by another known as the [modulo operator](https://en.wikipedia.org/wiki/Modulo_operation). This is the same as using %; however, it is for floats. 
 
 
 ### Expected Behavior
 
 When launching this app, you should see:
 
-* 8 trails that are moving horizontally,
+* 8 trails that are moving horizontally, showing different types of waveforms.
 * each trail has a different periodic signal based on the respective labeled functions
 
 Instructions for use:
