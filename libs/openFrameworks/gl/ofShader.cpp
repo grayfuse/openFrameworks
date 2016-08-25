@@ -82,6 +82,13 @@ static void releaseProgram(GLuint id){
 	}
 }
 
+#ifndef TARGET_OPENGLES
+//--------------------------------------------------------------
+ofShader::TransformFeedbackBinding::TransformFeedbackBinding(const ofBufferObject & buffer)
+:size(buffer.size())
+,buffer(buffer){}
+#endif
+
 //--------------------------------------------------------------
 ofShader::ofShader() :
 program(0),
@@ -180,12 +187,12 @@ ofShader & ofShader::operator=(ofShader && mom){
 }
 
 //--------------------------------------------------------------
-bool ofShader::load(string shaderName) {
-	return load(shaderName + ".vert", shaderName + ".frag");
+bool ofShader::load(std::filesystem::path shaderName) {
+    return load(shaderName.string() + ".vert", shaderName.string() + ".frag");
 }
 
 //--------------------------------------------------------------
-bool ofShader::load(string vertName, string fragName, string geomName) {
+bool ofShader::load(std::filesystem::path vertName, std::filesystem::path fragName, std::filesystem::path geomName) {
 	if(vertName.empty() == false) setupShaderFromFile(GL_VERTEX_SHADER, vertName);
 	if(fragName.empty() == false) setupShaderFromFile(GL_FRAGMENT_SHADER, fragName);
 #ifndef TARGET_OPENGLES
@@ -197,8 +204,75 @@ bool ofShader::load(string vertName, string fragName, string geomName) {
 	return linkProgram();
 }
 
+#if !defined(TARGET_OPENGLES) && defined(glDispatchCompute)
 //--------------------------------------------------------------
-bool ofShader::setupShaderFromFile(GLenum type, string filename) {
+bool ofShader::loadCompute(std::filesystem::path shaderName) {
+	return setupShaderFromFile(GL_COMPUTE_SHADER, shaderName) && linkProgram();
+}
+#endif
+
+//--------------------------------------------------------------
+bool ofShader::setup(const Settings & settings) {
+	for (auto shader : settings.shaderFiles) {
+		auto ty = shader.first;
+		auto file = shader.second;
+		if (!setupShaderFromFile(ty, file)) {
+			return false;
+		}
+	}
+
+	for (auto shader : settings.shaderSources) {
+		auto ty = shader.first;
+		auto source = shader.second;
+        if (!setupShaderFromSource(ty, source, settings.sourceDirectoryPath)) {
+			return false;
+		}
+	}
+	
+	if (ofIsGLProgrammableRenderer() && settings.bindDefaults) {
+		bindDefaults();
+	}
+
+	return linkProgram();
+}
+
+#if !defined(TARGET_OPENGLES)
+//--------------------------------------------------------------
+bool ofShader::setup(const TransformFeedbackSettings & settings) {
+	for (auto shader : settings.shaderFiles) {
+		auto ty = shader.first;
+		auto file = shader.second;
+		if (!setupShaderFromFile(ty, file)) {
+			return false;
+		}
+	}
+
+	for (auto shader : settings.shaderSources) {
+		auto ty = shader.first;
+		auto source = shader.second;
+        if (!setupShaderFromSource(ty, source, settings.sourceDirectoryPath)) {
+			return false;
+		}
+	}
+
+	if (ofIsGLProgrammableRenderer() && settings.bindDefaults) {
+		bindDefaults();
+	}
+
+	if (!settings.varyingsToCapture.empty()) {
+		std::vector<const char*> varyings(settings.varyingsToCapture.size());
+		std::transform(settings.varyingsToCapture.begin(), settings.varyingsToCapture.end(), varyings.begin(), [](const std::string & str) {
+			return str.c_str();
+		});
+        glTransformFeedbackVaryings(getProgram(), varyings.size(), varyings.data(), settings.bufferMode);
+	}
+
+	return linkProgram();
+}
+#endif
+
+//--------------------------------------------------------------
+bool ofShader::setupShaderFromFile(GLenum type, std::filesystem::path filename) {
 	ofBuffer buffer = ofBufferFromFile(filename);
 	// we need to make absolutely sure to have an absolute path here, so that any #includes
 	// within the shader files have a root directory to traverse from.
@@ -452,7 +526,8 @@ void ofShader::checkShaderInfoLog(GLuint shader, GLenum type, ofLogLevel logLeve
 			std::smatch matches;
 			string infoString = ofTrim(infoBuffer);
 			if (std::regex_search(infoString, matches, intel) || std::regex_search(infoString, matches, nvidia_ati)){
-				ofBuffer buf = shaders[type].expandedSource;
+                ofBuffer buf;
+                buf.set(shaders[type].expandedSource);
 				ofBuffer::Line line = buf.getLines().begin();
 				int  offendingLineNumber = ofToInt(matches[1]);
 				ostringstream msg;
@@ -725,6 +800,48 @@ void ofShader::end()  const{
 	ofGetGLRenderer()->unbind(*this);
 }
 
+#if !defined(TARGET_OPENGLES)
+//--------------------------------------------------------------
+void ofShader::beginTransformFeedback(GLenum mode) const {
+	begin();
+	glBeginTransformFeedback(mode);
+}
+
+//--------------------------------------------------------------
+void ofShader::beginTransformFeedback(GLenum mode, const TransformFeedbackBinding & binding) const {
+	binding.buffer.bindRange(GL_TRANSFORM_FEEDBACK_BUFFER, binding.index, binding.offset, binding.size);
+	beginTransformFeedback(mode);
+}
+
+//--------------------------------------------------------------
+void ofShader::beginTransformFeedback(GLenum mode, const std::vector<TransformFeedbackBinding> & bindings) const {
+	for (auto & binding : bindings) {
+		binding.buffer.bindRange(GL_TRANSFORM_FEEDBACK_BUFFER, binding.index, binding.offset, binding.size);
+	}
+	beginTransformFeedback(mode);
+}
+
+//--------------------------------------------------------------
+void ofShader::endTransformFeedback() const {
+	glEndTransformFeedback();
+	end();
+}
+
+//--------------------------------------------------------------
+void ofShader::endTransformFeedback(const TransformFeedbackBinding & binding) const {
+	binding.buffer.unbindRange(GL_TRANSFORM_FEEDBACK_BUFFER, binding.index);
+	endTransformFeedback();
+}
+
+//--------------------------------------------------------------
+void ofShader::endTransformFeedback(const std::vector<TransformFeedbackBinding> & bindings) const {
+	for (auto & binding : bindings) {
+		binding.buffer.unbindRange(GL_TRANSFORM_FEEDBACK_BUFFER, binding.index);
+	}
+	endTransformFeedback();
+}
+#endif
+
 #if !defined(TARGET_OPENGLES) && defined(glDispatchCompute)
 //--------------------------------------------------------------
 void ofShader::dispatchCompute(GLuint x, GLuint y, GLuint z) const{
@@ -846,17 +963,17 @@ void ofShader::setUniform4f(const string & name, float v1, float v2, float v3, f
 
 
 //--------------------------------------------------------------
-void ofShader::setUniform2f(const string & name, const ofVec2f & v) const{
+void ofShader::setUniform2f(const string & name, const glm::vec2 & v) const{
 	setUniform2f(name,v.x,v.y);
 }
 
 //--------------------------------------------------------------
-void ofShader::setUniform3f(const string & name, const ofVec3f & v) const{
+void ofShader::setUniform3f(const string & name, const glm::vec3 & v) const{
 	setUniform3f(name,v.x,v.y,v.z);
 }
 
 //--------------------------------------------------------------
-void ofShader::setUniform4f(const string & name, const ofVec4f & v) const{
+void ofShader::setUniform4f(const string & name, const glm::vec4 & v) const{
 	setUniform4f(name,v.x,v.y,v.z,v.w);
 }
 
@@ -936,12 +1053,18 @@ void ofShader::setUniforms(const ofParameterGroup & parameters) const{
 			setUniform1i(parameters[i].getEscapedName(),parameters[i].cast<int>());
 		}else if(parameters[i].type()==typeid(ofParameter<float>).name()){
 			setUniform1f(parameters[i].getEscapedName(),parameters[i].cast<float>());
+		}else if(parameters[i].type()==typeid(ofParameter<glm::vec2>).name()){
+			setUniform2f(parameters[i].getEscapedName(),parameters[i].cast<glm::vec2>());
+		}else if(parameters[i].type()==typeid(ofParameter<glm::vec3>).name()){
+			setUniform3f(parameters[i].getEscapedName(),parameters[i].cast<glm::vec3>());
+		}else if(parameters[i].type()==typeid(ofParameter<glm::vec4>).name()){
+			setUniform4f(parameters[i].getEscapedName(),parameters[i].cast<glm::vec4>());
 		}else if(parameters[i].type()==typeid(ofParameter<ofVec2f>).name()){
-			setUniform2f(parameters[i].getEscapedName(),parameters[i].cast<ofVec2f>());
+			setUniform2f(parameters[i].getEscapedName(),parameters[i].cast<glm::vec2>());
 		}else if(parameters[i].type()==typeid(ofParameter<ofVec3f>).name()){
-			setUniform3f(parameters[i].getEscapedName(),parameters[i].cast<ofVec3f>());
+			setUniform3f(parameters[i].getEscapedName(),parameters[i].cast<glm::vec3>());
 		}else if(parameters[i].type()==typeid(ofParameter<ofVec4f>).name()){
-			setUniform4f(parameters[i].getEscapedName(),parameters[i].cast<ofVec4f>());
+			setUniform4f(parameters[i].getEscapedName(),parameters[i].cast<glm::vec4>());
 		}else if(parameters[i].type()==typeid(ofParameterGroup).name()){
 			setUniforms((ofParameterGroup&)parameters[i]);
 		}
@@ -949,18 +1072,18 @@ void ofShader::setUniforms(const ofParameterGroup & parameters) const{
 }
 	
 //--------------------------------------------------------------
-void ofShader::setUniformMatrix3f(const string & name, const ofMatrix3x3 & m, int count)  const{
+void ofShader::setUniformMatrix3f(const string & name, const glm::mat3 & m, int count)  const{
 	if(bLoaded) {
 		int loc = getUniformLocation(name);
-		if (loc != -1) glUniformMatrix3fv(loc, count, GL_FALSE, &m.a);
+		if (loc != -1) glUniformMatrix3fv(loc, count, GL_FALSE, glm::value_ptr(m));
 	}
 }
 
 //--------------------------------------------------------------
-void ofShader::setUniformMatrix4f(const string & name, const ofMatrix4x4 & m, int count)  const{
+void ofShader::setUniformMatrix4f(const string & name, const glm::mat4 & m, int count) const{
 	if(bLoaded) {
 		int loc = getUniformLocation(name);
-		if (loc != -1) glUniformMatrix4fv(loc, count, GL_FALSE, m.getPtr());
+		if (loc != -1) glUniformMatrix4fv(loc, count, GL_FALSE, glm::value_ptr(m));
 	}
 }
 

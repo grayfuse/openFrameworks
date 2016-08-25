@@ -446,7 +446,7 @@ PLATFORM_LIBRARY_SEARCH_PATHS =
 
 PLATFORM_CC=$(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(HOST_PLATFORM)/bin/clang
 PLATFORM_CXX=$(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(HOST_PLATFORM)/bin/clang++
-PLATFORM_AR=ar
+PLATFORM_AR=$(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(HOST_PLATFORM)/arm-linux-androideabi/bin/ar
 PLATFORM_LD=$(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/linux-x86_64/arm-linux-androideabi/bin/ld
 
 #ifeq (,$(findstring MINGW32_NT,$(shell uname)))
@@ -474,6 +474,8 @@ afterplatform:$(RESFILE)
 		cp $(NDK_ROOT)/prebuilt/android-x86/gdbserver/gdbserver libs/x86; \
 	fi
 	
+	@cp $(NDK_ROOT)/prebuilt/android-arm/gdbserver/gdbserver libs;
+	
 	
 	@if [ "$(findstring armv5,$(ABIS_TO_COMPILE))" = "armv5" ]; then \
 		echo create gdb.setup for armeabi; \
@@ -495,6 +497,7 @@ afterplatform:$(RESFILE)
 		echo "directory $(NDK_ROOT)/sources/cxx-stl/system" >> libs/armeabi-v7a/gdb.setup; \
 		echo "directory $(PWD)/libs/armeabi-v7a" >> libs/armeabi-v7a/gdb.setup ; \
 		echo "" >> libs/armeabi-v7a/gdb.setup; \
+		cp libs/armeabi-v7a/gdb.setup libs/gdb.setup; \
 	fi
 	
 	@if [ "$(findstring x86,$(ABIS_TO_COMPILE))" = "x86" ]; then \
@@ -534,7 +537,8 @@ afterplatform:$(RESFILE)
 		rm -r libs/x86 2> /dev/null; \
 	fi; \
 	echo "APP_ABI := $$ABIS" > jni/Application.mk; \
-	echo "LOCAL_MODULE := OFAndroidApp" > jni/Android.mk
+	echo "APP_ABI := $$ABIS" > jni/Android.mk; \
+	echo "LOCAL_MODULE := OFAndroidApp" >> jni/Android.mk
 		
 	
 	
